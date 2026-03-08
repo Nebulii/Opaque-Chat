@@ -214,40 +214,58 @@ public abstract class ChatScreenMixin extends Screen {
                 int promptX = chatColX + (chatColWidth / 2) - (this.textRenderer.getWidth(prompt) / 2);
                 context.drawTextWithShadow(this.textRenderer, prompt, promptX, panelHeight / 2, prompt_color);
             } else {
-                this.opaqueChatField.visible = true;
-                this.opaqueChatField.setX(chatColX + 4);
-                this.opaqueChatField.setY(this.height - chat_input_height - 2);
-                this.opaqueChatField.setWidth(chatColWidth - 8);
-                this.opaqueChatField.setHeight(chat_input_height);
-                this.actionButton.visible = false;
+                boolean isSavedContact = ContactManager.contacts.containsKey(selectedContact.toLowerCase());
 
-                List<String> history = ContactManager.sessionHistory.get(selectedContact.toLowerCase());
-                if (history != null && !history.isEmpty()) {
-                    int topBound = panelY + panel_distance_from_top + 20;
-                    int bottomBound = this.height - chat_input_height - 8;
+                if (isSavedContact) {
+                    this.opaqueChatField.visible = true;
+                    this.opaqueChatField.setX(chatColX + 4);
+                    this.opaqueChatField.setY(this.height - chat_input_height - 2);
+                    this.opaqueChatField.setWidth(chatColWidth - 8);
+                    this.opaqueChatField.setHeight(chat_input_height);
+                    this.actionButton.visible = false;
 
-                    List<net.minecraft.text.OrderedText> allWrappedLines = new java.util.ArrayList<>();
-                    for (String msg : history) {
-                        allWrappedLines.addAll(this.textRenderer.wrapLines(Text.literal(msg), chatColWidth - 12));
-                    }
+                    List<String> history = ContactManager.sessionHistory.get(selectedContact.toLowerCase());
+                    if (history != null && !history.isEmpty()) {
+                        int topBound = panelY + panel_distance_from_top + 20;
+                        int bottomBound = this.height - chat_input_height - 8;
 
-                    int lineHeight = this.textRenderer.fontHeight + 2;
-                    int totalHeight = allWrappedLines.size() * lineHeight;
-                    int visibleHeight = bottomBound - topBound;
+                        List<net.minecraft.text.OrderedText> allWrappedLines = new java.util.ArrayList<>();
+                        for (String msg : history) {
+                            allWrappedLines.addAll(this.textRenderer.wrapLines(Text.literal(msg), chatColWidth - 12));
+                        }
 
-                    int maxScroll = Math.max(0, totalHeight - visibleHeight);
-                    if (this.scrollOffset > maxScroll) this.scrollOffset = maxScroll;
-                    if (this.scrollOffset < 0) this.scrollOffset = 0;
+                        int lineHeight = this.textRenderer.fontHeight + 2;
+                        int totalHeight = allWrappedLines.size() * lineHeight;
+                        int visibleHeight = bottomBound - topBound;
 
-                    int currentY = bottomBound + this.scrollOffset;
+                        int maxScroll = Math.max(0, totalHeight - visibleHeight);
+                        if (this.scrollOffset > maxScroll) this.scrollOffset = maxScroll;
+                        if (this.scrollOffset < 0) this.scrollOffset = 0;
 
-                    for (int i = allWrappedLines.size() - 1; i >= 0; i--) {
-                        currentY -= lineHeight;
+                        int currentY = bottomBound + this.scrollOffset;
 
-                        if (currentY >= topBound && currentY <= bottomBound - lineHeight) {
-                            context.drawTextWithShadow(this.textRenderer, allWrappedLines.get(i), chatColX + 6, currentY, text_primary);
+                        for (int i = allWrappedLines.size() - 1; i >= 0; i--) {
+                            currentY -= lineHeight;
+
+                            if (currentY >= topBound && currentY <= bottomBound - lineHeight) {
+                                context.drawTextWithShadow(this.textRenderer, allWrappedLines.get(i), chatColX + 6, currentY, text_primary);
+                            }
                         }
                     }
+                } else {
+                    this.opaqueChatField.visible = false;
+                    this.actionButton.visible = true;
+
+                    this.actionButton.setX(chatColX + (chatColWidth / 2) - (inner_gui_button_width / 2));
+                    this.actionButton.setY(panelY + (panelHeight / 2) - (inner_gui_button_height / 2));
+
+                    if (RequestManager.incomingRequests.contains(selectedContact.toLowerCase())) {
+                        this.actionButton.setMessage(Text.literal("Accept Invite"));
+                    } else {
+                        this.actionButton.setMessage(Text.literal("Send Invite"));
+                    }
+
+                    this.actionButton.render(context, mouseX, mouseY, delta);
                 }
             }
         } else {
