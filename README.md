@@ -1,4 +1,4 @@
-<img width="1920" height="1080" alt="player_b_after_accept" src="https://github.com/user-attachments/assets/87bc030d-3e7c-427d-baf6-a8c6433e1a20" /># Opaque Chat
+# Opaque Chat
 Opaque Chat is a purely client-side Fabric mod that brings end-to-end encryption to Minecraft chat. Communicate securely with your friends on any server without the server owner, console, or other players understanding a single word out of your chat.
 
 ## Features
