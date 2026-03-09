@@ -47,17 +47,40 @@ Once a secure link is established:
 
 ## Commands
 
-    /oc help - Shows the available commands menu.
+Opaque Chat operates on client-side. All commands use the `/oc` prefix.
 
-    /oc invite <target> - Start a secure chat handshake with another player.
+### General & Configuration
+| Command | Description |
+| :--- | :--- |
+| `/oc help` | Displays the in-game help menu with all available commands. |
+| `/oc config` | Opens the visual configuration UI (Requires YACL). |
+| `/oc reload` | Reloads `config.json` from your disk. |
+| `/oc delay <ms>` | Sets the delay between automated packets for the *current* server to bypass anti-spam kicks (Default: 5000ms). |
 
-    /oc accept <target> - Accept an incoming secure chat request.
+### 1-on-1 Secure Messaging
+| Command | Description |
+| :--- | :--- |
+| `/oc invite <player>` | Sends a secure ECC handshake request to the target player. |
+| `/oc accept <player>` | Accepts an incoming handshake request and exchanges public keys. |
+| `/oc msg <player> <text>` | Encrypts and sends a 1-on-1 message using the shared secret. |
 
-    /oc msg <target> <message> - Send an encrypted message manually.
+### Contact & Identity Management
+| Command | Description |
+| :--- | :--- |
+| `/oc contact add <player>` | An alias for `/oc invite <player>`. |
+| `/oc contact remove <player>`| Deletes a player from your saved contacts list. |
+| `/oc contact reload` | Reloads `contacts.json` from your disk. |
+| `/oc identity reset` | Generates a new ECC keypair and increments your Key Version. Your contacts will automatically heal and update to your new key the next time you message them |
+| `/oc identity reload` | Reloads `identity.json` from your disk. |
 
-    /oc config - Open the YACL configuration screen.
+### Group Chats
+*Note: The player who creates a group is permanently assigned as the **Group Owner**.*
 
-    /oc reload - Reload the opaque_chat configuration files from disk.
+| Command | Description | Permissions |
+| :--- | :--- | :--- |
+| `/oc group create <name> <members...>`| Generates a secure AES key, creates the group, and silently distributes the key to the listed members. | Anyone |
+| `/oc group invite <name> <player>` | Securely invites a new player to an existing group and automatically syncs the roster for all current members. | Owner Only |
+| `/oc group kick <name> <player>` | Kicks a player, generates a **new** AES key (ratcheting the version number), and securely distributes the new key to the remaining members to guarantee Perfect Forward Secrecy. | Owner Only |
 
 ## Example of how it work
 Normal GUI (before/after expanding the mod's GUI)
