@@ -25,14 +25,15 @@ public class ContactManager {
             if (Files.exists(CONTACTS_FILE)) {
                 String jsonInput = Files.readString(CONTACTS_FILE);
 
-                Type type = new TypeToken<Map<String, ContactData>>(){}.getType();
+                Type type = new TypeToken<Map<String, ContactData>>() {
+                }.getType();
                 contacts = GSON.fromJson(jsonInput, type);
 
                 if (contacts == null) {
                     contacts = new HashMap<>();
                 }
 
-                OpaqueChatClient.LOGGER.info("[Opaque Chat] Loaded " + contacts.size() + " contacts.");
+                OpaqueChatClient.LOGGER.info("[Opaque Chat] Loaded {} contacts.", contacts.size());
             } else {
                 saveContacts();
             }
@@ -53,6 +54,6 @@ public class ContactManager {
     public static void addContact(ContactData newContact) {
         contacts.put(newContact.username.toLowerCase(), newContact);
         saveContacts();
-        OpaqueChatClient.LOGGER.info("[Opaque Chat] Saved new contact: " + newContact.username);
+        OpaqueChatClient.LOGGER.info("[Opaque Chat] Saved new contact: {}", newContact.username);
     }
 }

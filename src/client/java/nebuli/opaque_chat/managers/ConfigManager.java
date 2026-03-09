@@ -1,16 +1,17 @@
-package nebuli.opaque_chat;
+package nebuli.opaque_chat.managers;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import nebuli.opaque_chat.OpaqueChatClient;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 
 public class ConfigManager {
     private static final Path CONFIG_FILE = OpaqueChatClient.CONFIG_DIR.resolve("config.json");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-
-    public static ModConfig config = new ModConfig();
 
     public static class ModConfig {
         public static int outer_gui_button_width = 22;
@@ -23,7 +24,6 @@ public class ConfigManager {
         public static int search_input_height = 16;
         public static int panel_distance_from_top = 0;
 
-        // NEW: Contact List Formatting
         public static int contact_entry_height = 14;
 
         public static double animation_duration = 350f;
@@ -33,7 +33,6 @@ public class ConfigManager {
         public static int outline_color = 0xFF555555;
         public static int prompt_color = 0xFFAAAAAA;
 
-        // NEW: Interactive Colors
         public static int contact_selected_bg = 0x55FFFFFF;
         public static int contact_hover_bg = 0x22FFFFFF;
         public static int contact_online_icon = 0xFF55FF55;
@@ -41,16 +40,22 @@ public class ConfigManager {
         public static int text_primary = 0xFFFFFFFF;
         public static int text_hover = 0xFFFFFFAA;
 
-        // Text Formatting
-        public static String format_code_modname =      "d";
-        public static String format_code_highlight =    "b";
-        public static String format_code_info =         "e";
-        public static String format_code_sender =       "a";
+        public static Map<String, Integer> server_cooldowns = new HashMap<>();
+        public static int server_chat_cooldown = 5000;
+
+        public static String format_code_modname = "d";
+        public static String format_code_highlight = "b";
+        public static String format_code_info = "e";
+        public static String format_code_sender = "a";
         public static String format_code_unhighlight1 = "8";
         public static String format_code_unhighlight2 = "7";
-        public static String format_code_error =        "c";
-        public static String format_code_success =      "a";
+        public static String format_code_error = "c";
+        public static String format_code_success = "a";
+
+        public static int group_creation_columns = 3;
     }
+
+    public static ModConfig config = new ModConfig();
 
     public static void loadConfig() {
         try {

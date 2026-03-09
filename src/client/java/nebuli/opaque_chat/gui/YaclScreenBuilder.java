@@ -1,11 +1,15 @@
-package nebuli.opaque_chat;
+package nebuli.opaque_chat.gui;
 
 import dev.isxander.yacl3.api.*;
-import dev.isxander.yacl3.api.controller.*;
+import dev.isxander.yacl3.api.controller.ColorControllerBuilder;
+import dev.isxander.yacl3.api.controller.DoubleSliderControllerBuilder;
+import dev.isxander.yacl3.api.controller.IntegerSliderControllerBuilder;
+import dev.isxander.yacl3.api.controller.StringControllerBuilder;
+import nebuli.opaque_chat.managers.ConfigManager;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
 
-import java.awt.Color;
+import java.awt.*;
 
 public class YaclScreenBuilder {
 
@@ -55,7 +59,11 @@ public class YaclScreenBuilder {
                         .option(Option.<Integer>createBuilder().name(Text.literal("Contact List Entry Height"))
                                 .binding(14, () -> ConfigManager.ModConfig.contact_entry_height, newVal -> ConfigManager.ModConfig.contact_entry_height = newVal)
                                 .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(10, 30).step(1)).build())
+                        .option(Option.<Integer>createBuilder().name(Text.literal("Group Creation Columns"))
+                                .binding(3, () -> ConfigManager.ModConfig.group_creation_columns, newVal -> ConfigManager.ModConfig.group_creation_columns = newVal)
+                                .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(1, 5).step(1)).build())
                         .build())
+
 
                 // ==========================================
                 // TAB 2: COLORS
@@ -108,6 +116,10 @@ public class YaclScreenBuilder {
                         .name(Text.literal("Advanced"))
 
                         // Mechanics
+                        .option(Option.<Integer>createBuilder().name(Text.literal("Server Chat Cooldown (ms)"))
+                                .binding(5000, () -> ConfigManager.ModConfig.server_chat_cooldown, newVal -> ConfigManager.ModConfig.server_chat_cooldown = newVal)
+                                .controller(opt -> IntegerSliderControllerBuilder.create(opt).range(0, 10000).step(50).formatValue(v -> Text.literal(v + " ms"))).build())
+
                         .option(Option.<Double>createBuilder().name(Text.literal("Animation Duration (ms)"))
                                 .binding(350.0, () -> ConfigManager.ModConfig.animation_duration, newVal -> ConfigManager.ModConfig.animation_duration = newVal)
                                 .controller(opt -> DoubleSliderControllerBuilder.create(opt).range(50.0, 1000.0).step(10.0).formatValue(v -> Text.literal(v.intValue() + " ms"))).build())

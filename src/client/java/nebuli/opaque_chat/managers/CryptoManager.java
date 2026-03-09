@@ -4,11 +4,15 @@ import javax.crypto.Cipher;
 import javax.crypto.KeyAgreement;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import java.io.ByteArrayOutputStream;
 import java.security.*;
 import java.security.spec.ECGenParameterSpec;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
+import java.util.List;
+import java.util.zip.Deflater;
+import java.util.zip.Inflater;
 
 public class CryptoManager {
     public static String[] generateKeys() {
@@ -25,11 +29,10 @@ public class CryptoManager {
             String base64Private = Base64.getEncoder().encodeToString(privateKey.getEncoded());
             String base64Public = Base64.getEncoder().encodeToString(publicKey.getEncoded());
 
-            return new String[]{ base64Public, base64Private };
+            return new String[]{base64Public, base64Private};
 
         } catch (Exception e) {
             System.err.println("[Opaque Chat] Failed to generate ECC keys!");
-            e.printStackTrace();
             return null;
         }
     }
@@ -60,15 +63,18 @@ public class CryptoManager {
     }
 
     public static String encryptMessage(String plainText, byte[] sharedSecret) throws Exception {
+        byte[] plainBytes = plainText.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+        byte[] compressedBytes = compress(plainBytes);
+
         byte[] iv = new byte[12];
         new SecureRandom().nextBytes(iv);
-
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         SecretKeySpec keySpec = new SecretKeySpec(sharedSecret, 0, 16, "AES");
         GCMParameterSpec gcmSpec = new GCMParameterSpec(128, iv);
-
         cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec);
-        byte[] encryptedText = cipher.doFinal(plainText.getBytes());
+
+        byte[] encryptedText = cipher.doFinal(compressedBytes);
 
         byte[] payload = new byte[iv.length + encryptedText.length];
         System.arraycopy(iv, 0, payload, 0, iv.length);
@@ -89,10 +95,75 @@ public class CryptoManager {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         SecretKeySpec keySpec = new SecretKeySpec(sharedSecret, 0, 16, "AES");
         GCMParameterSpec gcmSpec = new GCMParameterSpec(128, iv);
-
         cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec);
-        byte[] plainText = cipher.doFinal(encryptedText);
 
-        return new String(plainText);
+        byte[] compressedBytes = cipher.doFinal(encryptedText);
+
+        byte[] plainBytes = decompress(compressedBytes);
+
+        return new String(plainBytes, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    public static byte[] compress(byte[] data) throws Exception {
+        Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION);
+        deflater.setInput(data);
+        deflater.finish();
+
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream(data.length);
+        byte[] buffer = new byte[1024];
+        while (!deflater.finished()) {
+            int count = deflater.deflate(buffer);
+            outputStream.write(buffer, 0, count);
+        }
+        outputStream.close();
+        return outputStream.toByteArray();
+    }
+
+    public static byte[] decompress(byte[] data) throws Exception {
+        Inflater inflater = new Inflater();
+        inflater.setInput(data);
+
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream(data.length);
+        byte[] buffer = new byte[1024];
+        while (!inflater.finished()) {
+            int count = inflater.inflate(buffer);
+            outputStream.write(buffer, 0, count);
+        }
+        outputStream.close();
+        return outputStream.toByteArray();
+    }
+
+    public static List<String> chunkMessageAtSpaces(String message, int maxPlaintextLength) {
+        List<String> chunks = new java.util.ArrayList<>();
+        String[] words = message.split(" ");
+        StringBuilder currentChunk = new StringBuilder();
+
+        for (String word : words) {
+            if (word.length() > maxPlaintextLength) {
+                if (!currentChunk.isEmpty()) {
+                    chunks.add(currentChunk.toString().trim());
+                    currentChunk.setLength(0);
+                }
+                int index = 0;
+                while (index < word.length()) {
+                    int end = Math.min(index + maxPlaintextLength, word.length());
+                    chunks.add(word.substring(index, end));
+                    index = end;
+                }
+                continue;
+            }
+
+            if (currentChunk.length() + word.length() + 1 > maxPlaintextLength) {
+                chunks.add(currentChunk.toString().trim());
+                currentChunk.setLength(0);
+            }
+            currentChunk.append(word).append(" ");
+        }
+
+        if (!currentChunk.isEmpty()) {
+            chunks.add(currentChunk.toString().trim());
+        }
+
+        return chunks;
     }
 }

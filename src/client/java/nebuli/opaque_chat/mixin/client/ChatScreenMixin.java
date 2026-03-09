@@ -1,11 +1,12 @@
 package nebuli.opaque_chat.mixin.client;
 
+import nebuli.opaque_chat.OpaqueChatClient;
+import nebuli.opaque_chat.data.ContactData;
+import nebuli.opaque_chat.gui.CreateGroupScreen;
 import nebuli.opaque_chat.managers.ContactManager;
 import nebuli.opaque_chat.managers.CryptoManager;
 import nebuli.opaque_chat.managers.IdentityManager;
 import nebuli.opaque_chat.managers.RequestManager;
-import nebuli.opaque_chat.OpaqueChatClient;
-import nebuli.opaque_chat.data.ContactData;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ChatScreen;
@@ -31,24 +32,36 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.ArrayList;
 import java.util.List;
 
-import static nebuli.opaque_chat.ConfigManager.ModConfig.*;
 import static nebuli.opaque_chat.OpaqueChatClient.isOcOpen;
+import static nebuli.opaque_chat.managers.ConfigManager.ModConfig.*;
 
 @Mixin(ChatScreen.class)
 public abstract class ChatScreenMixin extends Screen {
-    @Shadow protected TextFieldWidget chatField;
+    @Shadow
+    protected TextFieldWidget chatField;
 
-    @Unique private TextFieldWidget opaqueChatField;
-    @Unique private ButtonWidget toggleButton;
-    @Unique private ButtonWidget requestsButton;
-    @Unique private ButtonWidget createGroupButton;
-    @Unique private ButtonWidget actionButton;
-    @Unique private TextFieldWidget searchBox;
-    @Unique private String selectedContact = null;
-    @Unique private boolean showingRequests = false;
-    @Unique private float slideProgress = 0.0f;
-    @Unique private long lastRenderTime = 0;
-    @Unique private int scrollOffset = 0;
+    @Unique
+    private TextFieldWidget opaqueChatField;
+    @Unique
+    private ButtonWidget toggleButton;
+    @Unique
+    private ButtonWidget requestsButton;
+    @Unique
+    private ButtonWidget createGroupButton;
+    @Unique
+    private ButtonWidget actionButton;
+    @Unique
+    private TextFieldWidget searchBox;
+    @Unique
+    private String selectedContact = null;
+    @Unique
+    private boolean showingRequests = false;
+    @Unique
+    private float slideProgress = 0.0f;
+    @Unique
+    private long lastRenderTime = 0;
+    @Unique
+    private int scrollOffset = 0;
 
     protected ChatScreenMixin(Text title) {
         super(title);
@@ -69,9 +82,7 @@ public abstract class ChatScreenMixin extends Screen {
     private void onInit(CallbackInfo ci) {
         this.lastRenderTime = Util.getMeasuringTimeMs();
 
-        this.toggleButton = ButtonWidget.builder(Text.literal("OC"), button -> {
-            isOcOpen = !isOcOpen;
-        }).dimensions(this.width - outer_gui_button_width - 2, this.height - outer_gui_button_height - 16, outer_gui_button_width, outer_gui_button_height).build();
+        this.toggleButton = ButtonWidget.builder(Text.literal("OC"), button -> isOcOpen = !isOcOpen).dimensions(this.width - outer_gui_button_width - 2, this.height - outer_gui_button_height - 16, outer_gui_button_width, outer_gui_button_height).build();
 
         this.requestsButton = ButtonWidget.builder(Text.literal("Requests"), button -> {
             this.showingRequests = !this.showingRequests;
@@ -80,7 +91,9 @@ public abstract class ChatScreenMixin extends Screen {
         }).dimensions(this.width, 20, 80, 20).build();
 
         this.createGroupButton = ButtonWidget.builder(Text.literal("Create Group"), button -> {
-            // TODO: Group chat logic
+            if (this.client != null) {
+                this.client.setScreen(new CreateGroupScreen(this));
+            }
         }).dimensions(this.width, 20, 80, 20).build();
 
         this.actionButton = ButtonWidget.builder(Text.literal("Action"), button -> {
@@ -95,15 +108,11 @@ public abstract class ChatScreenMixin extends Screen {
         }).dimensions(this.width, inner_gui_button_y, inner_gui_button_width, inner_gui_button_height).build();
         this.actionButton.visible = false;
 
-        this.opaqueChatField = new TextFieldWidget(
-                this.textRenderer, this.width, this.height - 14, 0, chat_input_height, Text.literal("Secure Message")
-        );
-        this.opaqueChatField.setMaxLength(512);
+        this.opaqueChatField = new TextFieldWidget(this.textRenderer, this.width, this.height - 14, 0, chat_input_height, Text.literal("Secure Message"));
+        this.opaqueChatField.setMaxLength(1280);
         this.opaqueChatField.setDrawsBackground(false);
 
-        this.searchBox = new TextFieldWidget(
-                this.textRenderer, this.width, 20, contact_column_width - 12, search_input_height, Text.literal("Search")
-        );
+        this.searchBox = new TextFieldWidget(this.textRenderer, this.width, 20, contact_column_width - 12, search_input_height, Text.literal("Search"));
         this.searchBox.setDrawsBackground(true);
 
         this.addDrawableChild(this.opaqueChatField);
@@ -118,21 +127,37 @@ public abstract class ChatScreenMixin extends Screen {
 
                 if (!message.isEmpty() && this.selectedContact != null) {
                     try {
-                        ContactData targetContact = ContactManager.contacts.get(this.selectedContact.toLowerCase());
-                        if (targetContact != null && IdentityManager.currentIdentity != null) {
+                        if (this.selectedContact.startsWith("#")) {
+                            String groupName = this.selectedContact.substring(1);
+                            nebuli.opaque_chat.data.GroupData targetGroup = nebuli.opaque_chat.managers.GroupManager.groups.values().stream().filter(g -> g.name.equals(groupName)).findFirst().orElse(null);
 
-                            byte[] sharedSecret = CryptoManager.getSharedSecret(IdentityManager.currentIdentity.private_key, targetContact.public_key);
-                            String encryptedText = CryptoManager.encryptMessage(message, sharedSecret);
+                            if (targetGroup != null && this.client != null && this.client.player != null) {
+                                byte[] groupAesKey = java.util.Base64.getDecoder().decode(targetGroup.aes_key_base64);
+                                List<String> messageChunks = CryptoManager.chunkMessageAtSpaces(message, 120);
 
-                            if (this.client != null && this.client.player != null) {
-                                this.client.player.networkHandler.sendChatMessage("!oc_msg " + this.selectedContact + " " + encryptedText);
+                                for (String chunk : messageChunks) {
+                                    String encryptedText = CryptoManager.encryptMessage(chunk, groupAesKey);
+                                    nebuli.opaque_chat.managers.MessageQueueManager.enqueueMessage("!oc_gmsg " + targetGroup.uuid + " " + targetGroup.version + " " + encryptedText);
+                                }
 
-                                ContactManager.sessionHistory.computeIfAbsent(this.selectedContact.toLowerCase(), k -> new ArrayList<>())
-                                        .add("§" + format_code_unhighlight1 + "[You]: §" + format_code_unhighlight2 + message);
+                                nebuli.opaque_chat.managers.GroupManager.groupSessionHistory.computeIfAbsent(targetGroup.uuid, k -> new ArrayList<>()).add("§" + format_code_unhighlight1 + "[You]: §" + format_code_unhighlight2 + message);
+                            }
+                        } else {
+                            ContactData targetContact = ContactManager.contacts.get(this.selectedContact.toLowerCase());
+                            if (targetContact != null && IdentityManager.currentIdentity != null) {
+                                byte[] sharedSecret = CryptoManager.getSharedSecret(IdentityManager.currentIdentity.private_key, targetContact.public_key);
+                                List<String> messageChunks = CryptoManager.chunkMessageAtSpaces(message, 120);
+
+                                if (this.client != null && this.client.player != null) {
+                                    for (String chunk : messageChunks) {
+                                        String encryptedText = CryptoManager.encryptMessage(chunk, sharedSecret);
+                                        nebuli.opaque_chat.managers.MessageQueueManager.enqueueMessage("!oc_msg " + this.selectedContact + " " + targetContact.version + " " + encryptedText);
+                                    }
+                                }
                             }
                         }
                     } catch (Exception e) {
-                        OpaqueChatClient.LOGGER.error("[Opaque Chat] Failed to encrypt/send message via GUI", e);
+                        OpaqueChatClient.LOGGER.error("[Opaque Chat] Failed to encrypt/send message", e);
                     }
                     this.opaqueChatField.setText("");
                 }
@@ -184,7 +209,7 @@ public abstract class ChatScreenMixin extends Screen {
             context.fill(chatColX, panelY, panelX + panelWidth, panelY + panelHeight, chat_area_bg);
 
             context.fill(chatColX, panelY, chatColX + 1, panelY + panelHeight, outline_color);
-            context.fill(chatColX, this.height - chat_input_height - 6, panelX + panelWidth, this.height- chat_input_height - 5, outline_color);
+            context.fill(chatColX, this.height - chat_input_height - 6, panelX + panelWidth, this.height - chat_input_height - 5, outline_color);
 
             this.searchBox.setX(panelX + 4);
             this.searchBox.setY(panelY + 4);
@@ -214,9 +239,15 @@ public abstract class ChatScreenMixin extends Screen {
                 int promptX = chatColX + (chatColWidth / 2) - (this.textRenderer.getWidth(prompt) / 2);
                 context.drawTextWithShadow(this.textRenderer, prompt, promptX, panelHeight / 2, prompt_color);
             } else {
-                boolean isSavedContact = ContactManager.contacts.containsKey(selectedContact.toLowerCase());
+                boolean isGroup = selectedContact.startsWith("#");
+                boolean isSavedContact = !isGroup && ContactManager.contacts.containsKey(selectedContact.toLowerCase());
 
-                if (isSavedContact) {
+                if (isGroup) {
+                    String groupName = selectedContact.substring(1);
+                    isGroup = nebuli.opaque_chat.managers.GroupManager.groups.values().stream().anyMatch(g -> g.name.equals(groupName));
+                }
+
+                if (isSavedContact || isGroup) {
                     this.opaqueChatField.visible = true;
                     this.opaqueChatField.setX(chatColX + 4);
                     this.opaqueChatField.setY(this.height - chat_input_height - 2);
@@ -224,7 +255,14 @@ public abstract class ChatScreenMixin extends Screen {
                     this.opaqueChatField.setHeight(chat_input_height);
                     this.actionButton.visible = false;
 
-                    List<String> history = ContactManager.sessionHistory.get(selectedContact.toLowerCase());
+                    List<String> history;
+                    if (selectedContact.startsWith("#")) {
+                        String groupName = selectedContact.substring(1);
+                        String uuid = nebuli.opaque_chat.managers.GroupManager.groups.values().stream().filter(g -> g.name.equals(groupName)).map(g -> g.uuid).findFirst().orElse("");
+                        history = nebuli.opaque_chat.managers.GroupManager.groupSessionHistory.get(uuid);
+                    } else {
+                        history = ContactManager.sessionHistory.get(selectedContact.toLowerCase());
+                    }
                     if (history != null && !history.isEmpty()) {
                         int topBound = panelY + panel_distance_from_top + 20;
                         int bottomBound = this.height - chat_input_height - 8;
@@ -282,6 +320,10 @@ public abstract class ChatScreenMixin extends Screen {
         String searchText = this.searchBox.getText().toLowerCase();
         List<String> entries = new ArrayList<>();
 
+        for (String groupName : nebuli.opaque_chat.managers.GroupManager.groups.values().stream().map(g -> g.name).toList()) {
+            if (groupName.toLowerCase().contains(searchText)) entries.add("#" + groupName);
+        }
+
         if (this.showingRequests) {
             for (String req : RequestManager.incomingRequests) {
                 if (req.toLowerCase().contains(searchText)) entries.add(req);
@@ -295,10 +337,7 @@ public abstract class ChatScreenMixin extends Screen {
                 String myName = this.client.getSession().getUsername();
                 for (PlayerListEntry entry : this.client.getNetworkHandler().getPlayerList()) {
                     String name = entry.getProfile().name();
-                    if (!name.equalsIgnoreCase(myName) &&
-                            !ContactManager.contacts.containsKey(name.toLowerCase()) &&
-                            name.toLowerCase().contains(searchText) &&
-                            !entries.contains(name)) {
+                    if (!name.equalsIgnoreCase(myName) && !ContactManager.contacts.containsKey(name.toLowerCase()) && name.toLowerCase().contains(searchText) && !entries.contains(name)) {
 
                         entries.add(name);
                     }
@@ -314,7 +353,7 @@ public abstract class ChatScreenMixin extends Screen {
         List<String> entries = getDisplayEntries();
 
         if (this.showingRequests && entries.isEmpty()) {
-            context.drawTextWithShadow(this.textRenderer, "§7No pending requests", listX + 4, startY, contact_offline_icon);
+            context.drawTextWithShadow(this.textRenderer, "§" + format_code_unhighlight2 + "No pending requests", listX + 4, startY, contact_offline_icon);
             return;
         }
 
@@ -324,8 +363,7 @@ public abstract class ChatScreenMixin extends Screen {
 
             boolean isContact = ContactManager.contacts.containsKey(name.toLowerCase());
             boolean isSelected = name.equals(selectedContact);
-            boolean isHovered = mouseX >= listX && mouseX <= listX + contact_column_width - 8 &&
-                    mouseY >= entryY && mouseY < entryY + contact_entry_height;
+            boolean isHovered = mouseX >= listX && mouseX <= listX + contact_column_width - 8 && mouseY >= entryY && mouseY < entryY + contact_entry_height;
 
             if (isSelected) {
                 context.fill(listX, entryY - 2, listX + contact_column_width - 8, entryY + contact_entry_height - 2, contact_selected_bg);
@@ -387,8 +425,7 @@ public abstract class ChatScreenMixin extends Screen {
         for (int i = 0; i < entries.size(); i++) {
             int entryY = listY + (i * contact_entry_height);
 
-            if (mouseX >= listX && mouseX <= listX + contact_column_width - 8 &&
-                    mouseY >= entryY && mouseY < entryY + contact_entry_height) {
+            if (mouseX >= listX && mouseX <= listX + contact_column_width - 8 && mouseY >= entryY && mouseY < entryY + contact_entry_height) {
 
                 this.selectedContact = entries.get(i);
 
