@@ -64,7 +64,9 @@ public class GroupManager {
         new SecureRandom().nextBytes(rawAesKey);
         String base64Key = Base64.getEncoder().encodeToString(rawAesKey);
 
-        GroupData newGroup = new GroupData(groupUuid, groupName, base64Key, members, 1);
+        String myName = net.minecraft.client.MinecraftClient.getInstance().getSession().getUsername();
+
+        GroupData newGroup = new GroupData(groupUuid, groupName, base64Key, members, 1, myName);
         addGroup(newGroup);
 
         return newGroup;

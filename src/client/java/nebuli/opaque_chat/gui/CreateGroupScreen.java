@@ -159,7 +159,7 @@ public class CreateGroupScreen extends Screen {
                 byte[] sharedSecret = CryptoManager.getSharedSecret(myPrivateKey, targetContact.public_key);
                 String encryptedGroupKey = CryptoManager.encryptMessage(newGroup.aes_key_base64, sharedSecret);
 
-                MessageQueueManager.enqueueMessage("!oc_ginv " + member + " " + newGroup.uuid + " " + encryptedGroupKey + " " + groupName);
+                MessageQueueManager.enqueueMessage("!oc_ginv " + member + " " + newGroup.uuid + " " + newGroup.version + " " + newGroup.owner + " " + encryptedGroupKey + " " + groupName);
             }
 
             this.client.player.sendMessage(Text.literal("§" + format_code_success + "[Opaque Chat] Group '" + groupName + "' created! Invites queued."), false);

@@ -95,11 +95,13 @@ public class ChatInterceptor {
                             }
                             return false;
                         } else if (command.equals("!oc_ginv") && parts.length == 3) {
-                            String[] inviteData = parts[2].split(" ", 3);
-                            if (inviteData.length == 3) {
+                            String[] inviteData = parts[2].split(" ", 5);
+                            if (inviteData.length == 5) {
                                 String groupUuid = inviteData[0];
-                                String encryptedKey = inviteData[1];
-                                String groupName = inviteData[2];
+                                int groupVersion = Integer.parseInt(inviteData[1]);
+                                String groupOwner = inviteData[2];
+                                String encryptedKey = inviteData[3];
+                                String groupName = inviteData[4];
 
                                 try {
                                     ContactData senderContact = ContactManager.contacts.get(senderName.toLowerCase());
@@ -107,7 +109,11 @@ public class ChatInterceptor {
                                         byte[] sharedSecret = CryptoManager.getSharedSecret(IdentityManager.currentIdentity.private_key, senderContact.public_key);
                                         String decryptedKeyBase64 = CryptoManager.decryptMessage(encryptedKey, sharedSecret);
 
-                                        GroupData newGroup = new GroupData(groupUuid, groupName, decryptedKeyBase64, new ArrayList<>(), 1);
+                                        GroupData newGroup = new GroupData(groupUuid, groupName, decryptedKeyBase64, new ArrayList<>(), groupVersion, groupOwner);
+
+                                        newGroup.members.add(MinecraftClient.getInstance().getSession().getUsername());
+                                        if (!newGroup.members.contains(senderName)) newGroup.members.add(senderName);
+
                                         GroupManager.addGroup(newGroup);
 
                                         MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(
@@ -116,6 +122,29 @@ public class ChatInterceptor {
                                     }
                                 } catch (Exception e) {
                                     OpaqueChatClient.LOGGER.error("[Opaque Chat] Failed to process group invite", e);
+                                }
+                            }
+                        } else if (command.equals("!oc_gadd") && parts.length == 3) {
+                            String[] addData = parts[2].split(" ", 2);
+                            if (addData.length == 2) {
+                                String groupUuid = addData[0];
+                                String newMember = addData[1].trim();
+
+                                if (GroupManager.groups.containsKey(groupUuid)) {
+                                    GroupData group = GroupManager.groups.get(groupUuid);
+
+                                    if (!senderName.equalsIgnoreCase(group.owner)) {
+                                        return false;
+                                    }
+
+                                    if (group.members.stream().noneMatch(m -> m.equalsIgnoreCase(newMember))) {
+                                        group.members.add(newMember);
+                                        GroupManager.saveGroups();
+
+                                        MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(
+                                                Text.literal("§" + format_code_modname + "[Opaque Chat] §7" + newMember + " joined group §" + format_code_highlight + group.name)
+                                        );
+                                    }
                                 }
                             }
                         } else if (command.equals("!oc_key") && parts.length == 3) {
@@ -196,13 +225,17 @@ public class ChatInterceptor {
                                 try {
                                     ContactData senderContact = ContactManager.contacts.get(senderName.toLowerCase());
                                     if (senderContact != null && GroupManager.groups.containsKey(groupUuid)) {
+                                        GroupData group = GroupManager.groups.get(groupUuid);
+
+                                        if (!senderName.equalsIgnoreCase(group.owner)) {
+                                            OpaqueChatClient.LOGGER.warn("[Opaque Chat] Blocked an unauthorized key rotation attempt for '" + group.name + "' from " + senderName);
+                                            return false;
+                                        }
 
                                         byte[] sharedSecret = CryptoManager.getSharedSecret(IdentityManager.currentIdentity.private_key, senderContact.public_key);
-                                        String newKeyBase64 = CryptoManager.decryptMessage(encryptedKey, sharedSecret);
 
-                                        nebuli.opaque_chat.data.GroupData group = GroupManager.groups.get(groupUuid);
-                                        group.aes_key_base64 = newKeyBase64;
-                                        group.version = newVersion; // Save the new incremented version!
+                                        group.aes_key_base64 = CryptoManager.decryptMessage(encryptedKey, sharedSecret);
+                                        group.version = newVersion;
                                         GroupManager.saveGroups();
 
                                         MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(
