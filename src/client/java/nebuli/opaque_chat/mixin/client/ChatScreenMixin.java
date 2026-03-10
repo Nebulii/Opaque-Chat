@@ -100,7 +100,11 @@ public abstract class ChatScreenMixin extends Screen {
             if (this.selectedContact != null && this.client != null && this.client.player != null) {
                 String target = this.selectedContact;
                 if (RequestManager.incomingRequests.contains(target.toLowerCase())) {
-                    this.client.player.networkHandler.sendChatCommand("oc accept " + target);
+                    if (target.startsWith("#")) {
+                        this.client.player.networkHandler.sendChatCommand("oc group accept " + target.substring(1));
+                    } else {
+                        this.client.player.networkHandler.sendChatCommand("oc accept " + target);
+                    }
                 } else {
                     this.client.player.networkHandler.sendChatCommand("oc invite " + target);
                 }
@@ -153,6 +157,8 @@ public abstract class ChatScreenMixin extends Screen {
                                         String encryptedText = CryptoManager.encryptMessage(chunk, sharedSecret);
                                         nebuli.opaque_chat.managers.MessageQueueManager.enqueueMessage("!oc_msg " + this.selectedContact + " " + targetContact.version + " " + encryptedText);
                                     }
+
+                                    ContactManager.sessionHistory.computeIfAbsent(this.selectedContact.toLowerCase(), k -> new ArrayList<>()).add("§" + format_code_unhighlight1 + "[You]: §" + format_code_unhighlight2 + message);
                                 }
                             }
                         }
@@ -320,15 +326,15 @@ public abstract class ChatScreenMixin extends Screen {
         String searchText = this.searchBox.getText().toLowerCase();
         List<String> entries = new ArrayList<>();
 
-        for (String groupName : nebuli.opaque_chat.managers.GroupManager.groups.values().stream().map(g -> g.name).toList()) {
-            if (groupName.toLowerCase().contains(searchText)) entries.add("#" + groupName);
-        }
-
         if (this.showingRequests) {
             for (String req : RequestManager.incomingRequests) {
                 if (req.toLowerCase().contains(searchText)) entries.add(req);
             }
         } else {
+            for (String groupName : nebuli.opaque_chat.managers.GroupManager.groups.values().stream().map(g -> g.name).toList()) {
+                if (groupName.toLowerCase().contains(searchText)) entries.add("#" + groupName);
+            }
+
             for (String name : ContactManager.contacts.values().stream().map(c -> c.username).toList()) {
                 if (name.toLowerCase().contains(searchText)) entries.add(name);
             }

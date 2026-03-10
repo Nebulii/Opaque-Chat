@@ -41,7 +41,11 @@ public class CreateGroupScreen extends Screen {
         super.init();
 
         int columns = Math.max(1, ConfigManager.ModConfig.group_creation_columns);
-        this.contactsPerPage = columns * 7;
+
+        int availableHeight = this.height - 92 - 70;
+        int rows = Math.max(1, availableHeight / 24);
+        this.contactsPerPage = columns * rows;
+        int paginationY = this.height - 65;
 
         this.nameField = new TextFieldWidget(this.textRenderer, this.width / 2 - 100, 35, 200, 20, Text.literal("Group Name"));
         this.nameField.setPlaceholder(Text.literal("Enter Group Name..."));
@@ -65,14 +69,14 @@ public class CreateGroupScreen extends Screen {
                 this.currentPage--;
                 this.refreshContactButtons();
             }
-        }).dimensions(this.width / 2 - 125, 220, 20, 20).build();
+        }).dimensions(this.width / 2 - 60, paginationY, 20, 20).build();
 
         ButtonWidget nextButton = ButtonWidget.builder(Text.literal(">"), button -> {
             if ((this.currentPage + 1) * contactsPerPage < this.filteredContacts.size()) {
                 this.currentPage++;
                 this.refreshContactButtons();
             }
-        }).dimensions(this.width / 2 + 105, 220, 20, 20).build();
+        }).dimensions(this.width / 2 + 40, paginationY, 20, 20).build();
 
         this.addDrawableChild(prevButton);
         this.addDrawableChild(nextButton);
@@ -179,7 +183,7 @@ public class CreateGroupScreen extends Screen {
         this.createButton.active = !this.nameField.getText().trim().isEmpty() && !this.selectedContacts.isEmpty();
 
         int maxPages = Math.max(1, (int) Math.ceil((double) this.filteredContacts.size() / contactsPerPage));
-        context.drawCenteredTextWithShadow(this.textRenderer, "Page " + (this.currentPage + 1) + " of " + maxPages, this.width / 2, 226, 0xAAAAAA);
+        context.drawCenteredTextWithShadow(this.textRenderer, "Page " + (this.currentPage + 1) + " of " + maxPages, this.width / 2, this.height - 59, 0xAAAAAA);
 
         super.render(context, mouseX, mouseY, delta);
 

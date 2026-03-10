@@ -61,6 +61,8 @@ public class CommandManager {
 
                         MinecraftClient client = MinecraftClient.getInstance();
                         if (client.player != null) {
+                            RequestManager.outgoingRequests.add(targetPlayer.toLowerCase());
+
                             MessageQueueManager.enqueueMessage("!oc_req " + targetPlayer);
                         }
 
@@ -76,6 +78,7 @@ public class CommandManager {
                     }).executes(context -> {
                         String target = StringArgumentType.getString(context, "target");
                         RequestManager.removeRequest(target);
+                        RequestManager.outgoingRequests.add(target.toLowerCase());
                         ChatInterceptor.sendPublicKey(target);
 
                         context.getSource().sendFeedback(Text.literal("§" + format_code_modname + "[Opaque Chat]§r Handshake accepted for §" + format_code_highlight + target));
@@ -301,10 +304,7 @@ public class CommandManager {
 
                                     MessageQueueManager.enqueueMessage("!oc_ginv " + targetPlayer + " " + targetGroup.uuid + " " + targetGroup.version + " " + targetGroup.owner + " " + encryptedGroupKey + " " + groupName);
 
-                                    for (String member : targetGroup.members) {
-                                        if (member.equalsIgnoreCase(myName)) continue;
-                                        MessageQueueManager.enqueueMessage("!oc_gadd " + member + " " + targetGroup.uuid + " " + targetPlayer);
-                                    }
+                                    MessageQueueManager.enqueueMessage("!oc_gadd " + targetGroup.uuid + " " + targetPlayer);
 
                                     targetGroup.members.add(targetPlayer);
                                     GroupManager.saveGroups();
@@ -315,6 +315,46 @@ public class CommandManager {
                                 }
                                 return 1;
                             }))))
+
+                            // /oc group accept <GroupName>
+                            .then(ClientCommandManager.literal("accept").then(ClientCommandManager.argument("name", StringArgumentType.greedyString()).executes(context -> {
+                                String groupName = StringArgumentType.getString(context, "name");
+                                nebuli.opaque_chat.data.GroupData pendingGroup = RequestManager.pendingGroupInvites.get(groupName.toLowerCase());
+
+                                if (pendingGroup != null) {
+                                    GroupManager.addGroup(pendingGroup);
+                                    RequestManager.pendingGroupInvites.remove(groupName.toLowerCase());
+                                    RequestManager.removeRequest("#" + groupName);
+
+                                    context.getSource().sendFeedback(Text.literal("§" + format_code_success + "[Opaque Chat] You securely joined '" + groupName + "'."));
+                                } else {
+                                    context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] No pending invite found for '" + groupName + "'."));
+                                }
+                                return 1;
+                            })))
+
+                            // /oc group leave <GroupName>
+                            .then(ClientCommandManager.literal("leave")
+                                    .then(ClientCommandManager.argument("name", StringArgumentType.word())
+                                            .executes(context -> {
+                                                String groupName = StringArgumentType.getString(context, "name");
+                                                nebuli.opaque_chat.data.GroupData targetGroup = GroupManager.groups.values().stream()
+                                                        .filter(g -> g.name.equals(groupName)).findFirst().orElse(null);
+
+                                                if (targetGroup == null) {
+                                                    context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Group not found."));
+                                                    return 0;
+                                                }
+
+                                                GroupManager.removeGroup(targetGroup.uuid);
+
+                                                MessageQueueManager.enqueueMessage("!oc_gleave " + targetGroup.uuid);
+
+                                                context.getSource().sendFeedback(Text.literal("§" + format_code_success + "[Opaque Chat] You have left the group '" + groupName + "'."));
+                                                return 1;
+                                            })
+                                    )
+                            )
 
                             // /oc group kick <GroupName> <Player>
                             .then(ClientCommandManager.literal("kick").then(ClientCommandManager.argument("name", StringArgumentType.word()).then(ClientCommandManager.argument("player", StringArgumentType.word()).executes(context -> {
