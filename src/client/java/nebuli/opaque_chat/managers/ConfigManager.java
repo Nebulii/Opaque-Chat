@@ -53,6 +53,8 @@ public class ConfigManager {
         public static String format_code_success = "a";
 
         public static int group_creation_columns = 3;
+
+        public static java.util.List<String> blocked_players = new java.util.ArrayList<>();
     }
 
     public static ModConfig config = new ModConfig();

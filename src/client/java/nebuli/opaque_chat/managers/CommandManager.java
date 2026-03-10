@@ -28,22 +28,20 @@ public class CommandManager {
 
                         context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc help §8- Show this menu"));
                         context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc config §8- Open the visual configuration screen"));
-                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc reload §8- Reload the config from disk"));
                         context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc delay <ms> §8- Set the chat cooldown delay for the current server"));
 
                         context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc invite <target> §8- Start a secure handshake with a player"));
-                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc accept <target> §8- Accept a secure chat request"));
+                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc accept/reject <target> §8- Accept or reject a handshake"));
                         context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc msg <target> <message> §8- Send a secure 1-on-1 message"));
 
-                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc identity reset §8- Delete and regenerate your ECC keys (Auto-heals contacts)"));
-                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc identity reload §8- Reload your identity from disk"));
-                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc contact add <target> §8- Alias for /oc invite"));
-                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc contact remove <target> §8- Delete a saved contact"));
-                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc contact reload §8- Reload contacts from disk"));
+                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc block/unblock <target> §8- Block a player from sending you packets"));
 
-                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc group create <name> <members...> §8- Create a group and invite members"));
-                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc group invite <name> <target> §8- (Owner Only) Invite a new player to the group"));
-                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc group kick <name> <target> §8- (Owner Only) Kick a player and rotate the AES key"));
+                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc identity reset §8- Delete and regenerate your ECC keys"));
+                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc contact add/remove <target> §8- Manage contacts"));
+
+                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc group create <name> <members...> §8- Create a group"));
+                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc group <name> accept/reject/leave §8- Manage your group membership"));
+                        context.getSource().sendFeedback(Text.literal("§" + format_code_highlight + "/oc group <name> invite/kick <target> §8- (Owner Only) Manage members"));
 
                         return 1;
                     }))
@@ -82,6 +80,40 @@ public class CommandManager {
                         ChatInterceptor.sendPublicKey(target);
 
                         context.getSource().sendFeedback(Text.literal("§" + format_code_modname + "[Opaque Chat]§r Handshake accepted for §" + format_code_highlight + target));
+                        return 1;
+                    })))
+
+                    // Subcommand: /oc reject <target>
+                    .then(ClientCommandManager.literal("reject").then(ClientCommandManager.argument("target", StringArgumentType.word()).executes(context -> {
+                        String target = StringArgumentType.getString(context, "target");
+                        RequestManager.removeRequest(target);
+                        context.getSource().sendFeedback(Text.literal("§" + format_code_modname + "[Opaque Chat]§r Rejected handshake from §" + format_code_highlight + target));
+                        return 1;
+                    })))
+
+                    // Subcommand: /oc block <target>
+                    .then(ClientCommandManager.literal("block").then(ClientCommandManager.argument("target", StringArgumentType.word()).executes(context -> {
+                        String target = StringArgumentType.getString(context, "target").toLowerCase();
+                        if (!ConfigManager.ModConfig.blocked_players.contains(target)) {
+                            ConfigManager.ModConfig.blocked_players.add(target);
+                            ConfigManager.saveConfig();
+
+                            ContactManager.contacts.remove(target);
+                            ContactManager.saveContacts();
+
+                            context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Blocked " + target + ". Their packets will now be dropped."));
+                        }
+                        return 1;
+                    })))
+
+                    // Subcommand: /oc unblock <target>
+                    .then(ClientCommandManager.literal("unblock").then(ClientCommandManager.argument("target", StringArgumentType.word()).suggests((context, builder) -> CommandSource.suggestMatching(ConfigManager.ModConfig.blocked_players, builder)).executes(context -> {
+                        String target = StringArgumentType.getString(context, "target").toLowerCase();
+                        if (ConfigManager.ModConfig.blocked_players.contains(target)) {
+                            ConfigManager.ModConfig.blocked_players.remove(target);
+                            ConfigManager.saveConfig();
+                            context.getSource().sendFeedback(Text.literal("§" + format_code_success + "[Opaque Chat] Unblocked " + target + "."));
+                        }
                         return 1;
                     })))
 
@@ -266,155 +298,176 @@ public class CommandManager {
                                 return 1;
                             }))))
 
-                            // /oc group invite <GroupName> <Player>
-                            .then(ClientCommandManager.literal("invite").then(ClientCommandManager.argument("name", StringArgumentType.word()).then(ClientCommandManager.argument("player", StringArgumentType.word()).executes(context -> {
-                                String groupName = StringArgumentType.getString(context, "name");
-                                String targetPlayer = StringArgumentType.getString(context, "player");
+                            .then(ClientCommandManager.argument("name", StringArgumentType.word())
+                                    .suggests((context, builder) -> {
+                                        java.util.List<String> suggestions = new java.util.ArrayList<>(GroupManager.groups.keySet());
+                                        suggestions.addAll(RequestManager.pendingGroupInvites.keySet());
+                                        return CommandSource.suggestMatching(suggestions, builder);
+                                    })
 
-                                nebuli.opaque_chat.data.GroupData targetGroup = GroupManager.groups.values().stream().filter(g -> g.name.equals(groupName)).findFirst().orElse(null);
+                                    // /oc group <group name> invite <target>
+                                    .then(ClientCommandManager.literal("invite").then(ClientCommandManager.argument("player", StringArgumentType.word()).executes(context -> {
+                                        String groupName = StringArgumentType.getString(context, "name");
+                                        String targetPlayer = StringArgumentType.getString(context, "player");
 
-                                if (targetGroup == null) {
-                                    context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Group not found."));
-                                    return 0;
-                                }
+                                        nebuli.opaque_chat.data.GroupData targetGroup = GroupManager.groups.values().stream().filter(g -> g.name.equals(groupName)).findFirst().orElse(null);
 
-                                String myName = MinecraftClient.getInstance().getSession().getUsername();
-
-                                if (!targetGroup.owner.equalsIgnoreCase(myName)) {
-                                    context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Only the group owner (" + targetGroup.owner + ") can invite new members."));
-                                    return 0;
-                                }
-
-                                ContactData contact = ContactManager.contacts.get(targetPlayer.toLowerCase());
-                                if (contact == null) {
-                                    context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] You must be saved contacts with " + targetPlayer + " to invite them."));
-                                    return 0;
-                                }
-
-                                if (targetGroup.members.stream().anyMatch(m -> m.equalsIgnoreCase(targetPlayer))) {
-                                    context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] " + targetPlayer + " is already in the group."));
-                                    return 0;
-                                }
-
-                                try {
-                                    String myPrivateKey = IdentityManager.currentIdentity.private_key;
-
-                                    byte[] sharedSecret = CryptoManager.getSharedSecret(myPrivateKey, contact.public_key);
-                                    String encryptedGroupKey = CryptoManager.encryptMessage(targetGroup.aes_key_base64, sharedSecret);
-
-                                    MessageQueueManager.enqueueMessage("!oc_ginv " + targetPlayer + " " + targetGroup.uuid + " " + targetGroup.version + " " + targetGroup.owner + " " + encryptedGroupKey + " " + groupName);
-
-                                    MessageQueueManager.enqueueMessage("!oc_gadd " + targetGroup.uuid + " " + targetPlayer);
-
-                                    targetGroup.members.add(targetPlayer);
-                                    GroupManager.saveGroups();
-
-                                    context.getSource().sendFeedback(Text.literal("§" + format_code_success + "[Opaque Chat] Invited " + targetPlayer + " to '" + groupName + "'."));
-                                } catch (Exception e) {
-                                    context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Failed to encrypt group invite!"));
-                                }
-                                return 1;
-                            }))))
-
-                            // /oc group accept <GroupName>
-                            .then(ClientCommandManager.literal("accept").then(ClientCommandManager.argument("name", StringArgumentType.greedyString()).executes(context -> {
-                                String groupName = StringArgumentType.getString(context, "name");
-                                nebuli.opaque_chat.data.GroupData pendingGroup = RequestManager.pendingGroupInvites.get(groupName.toLowerCase());
-
-                                if (pendingGroup != null) {
-                                    GroupManager.addGroup(pendingGroup);
-                                    RequestManager.pendingGroupInvites.remove(groupName.toLowerCase());
-                                    RequestManager.removeRequest("#" + groupName);
-
-                                    context.getSource().sendFeedback(Text.literal("§" + format_code_success + "[Opaque Chat] You securely joined '" + groupName + "'."));
-                                } else {
-                                    context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] No pending invite found for '" + groupName + "'."));
-                                }
-                                return 1;
-                            })))
-
-                            // /oc group leave <GroupName>
-                            .then(ClientCommandManager.literal("leave")
-                                    .then(ClientCommandManager.argument("name", StringArgumentType.word())
-                                            .executes(context -> {
-                                                String groupName = StringArgumentType.getString(context, "name");
-                                                nebuli.opaque_chat.data.GroupData targetGroup = GroupManager.groups.values().stream()
-                                                        .filter(g -> g.name.equals(groupName)).findFirst().orElse(null);
-
-                                                if (targetGroup == null) {
-                                                    context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Group not found."));
-                                                    return 0;
-                                                }
-
-                                                GroupManager.removeGroup(targetGroup.uuid);
-
-                                                MessageQueueManager.enqueueMessage("!oc_gleave " + targetGroup.uuid);
-
-                                                context.getSource().sendFeedback(Text.literal("§" + format_code_success + "[Opaque Chat] You have left the group '" + groupName + "'."));
-                                                return 1;
-                                            })
-                                    )
-                            )
-
-                            // /oc group kick <GroupName> <Player>
-                            .then(ClientCommandManager.literal("kick").then(ClientCommandManager.argument("name", StringArgumentType.word()).then(ClientCommandManager.argument("player", StringArgumentType.word()).executes(context -> {
-                                String groupName = StringArgumentType.getString(context, "name");
-                                String targetPlayer = StringArgumentType.getString(context, "player");
-                                String myName = MinecraftClient.getInstance().getSession().getUsername();
-
-                                nebuli.opaque_chat.data.GroupData targetGroup = GroupManager.groups.values().stream().filter(g -> g.name.equals(groupName)).findFirst().orElse(null);
-
-                                if (targetGroup == null) {
-                                    context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Group not found."));
-                                    return 0;
-                                }
-
-                                if (!targetGroup.owner.equalsIgnoreCase(myName)) {
-                                    context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Only the group owner (" + targetGroup.owner + ") can kick members."));
-                                    return 0;
-                                }
-
-                                String exactMemberName = targetGroup.members.stream().filter(m -> m.equalsIgnoreCase(targetPlayer)).findFirst().orElse(null);
-
-                                if (exactMemberName == null) {
-                                    context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Player is not in this group."));
-                                    return 0;
-                                }
-
-                                try {
-                                    targetGroup.members.remove(exactMemberName);
-
-                                    byte[] rawAesKey = new byte[16];
-                                    new java.security.SecureRandom().nextBytes(rawAesKey);
-                                    String newBase64Key = java.util.Base64.getEncoder().encodeToString(rawAesKey);
-
-                                    targetGroup.aes_key_base64 = newBase64Key;
-                                    targetGroup.version++;
-                                    GroupManager.saveGroups();
-
-                                    String myPrivateKey = IdentityManager.currentIdentity.private_key;
-
-                                    for (String member : targetGroup.members) {
-                                        if (member.equalsIgnoreCase(myName)) continue;
-
-                                        ContactData contact = ContactManager.contacts.get(member.toLowerCase());
-                                        if (contact != null) {
-                                            byte[] sharedSecret = CryptoManager.getSharedSecret(myPrivateKey, contact.public_key);
-                                            String encryptedNewKey = CryptoManager.encryptMessage(newBase64Key, sharedSecret);
-
-                                            MessageQueueManager.enqueueMessage("!oc_gupd " + member + " " + targetGroup.uuid + " " + targetGroup.version + " " + encryptedNewKey);
+                                        if (targetGroup == null) {
+                                            context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Group not found."));
+                                            return 0;
                                         }
-                                    }
 
-                                    MessageQueueManager.enqueueMessage("!oc_gkicked " + exactMemberName + " " + targetGroup.uuid);
+                                        String myName = MinecraftClient.getInstance().getSession().getUsername();
 
-                                    context.getSource().sendFeedback(Text.literal("§" + format_code_success + "[Opaque Chat] Kicked " + exactMemberName + " and rotated AES keys for '" + groupName + "'."));
-                                } catch (Exception e) {
-                                    context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Failed to rotate group keys!"));
-                                }
-                                return 1;
-                            })))))
+                                        if (!targetGroup.owner.equalsIgnoreCase(myName)) {
+                                            context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Only the group owner (" + targetGroup.owner + ") can invite new members."));
+                                            return 0;
+                                        }
 
+                                        ContactData contact = ContactManager.contacts.get(targetPlayer.toLowerCase());
+                                        if (contact == null) {
+                                            context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] You must be saved contacts with " + targetPlayer + " to invite them."));
+                                            return 0;
+                                        }
+
+                                        if (targetGroup.members.stream().anyMatch(m -> m.equalsIgnoreCase(targetPlayer))) {
+                                            context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] " + targetPlayer + " is already in the group."));
+                                            return 0;
+                                        }
+
+                                        try {
+                                            String myPrivateKey = IdentityManager.currentIdentity.private_key;
+
+                                            byte[] sharedSecret = CryptoManager.getSharedSecret(myPrivateKey, contact.public_key);
+                                            String encryptedGroupKey = CryptoManager.encryptMessage(targetGroup.aes_key_base64, sharedSecret);
+
+                                            MessageQueueManager.enqueueMessage("!oc_ginv " + targetPlayer + " " + targetGroup.uuid + " " + targetGroup.version + " " + targetGroup.owner + " " + encryptedGroupKey + " " + groupName);
+
+                                            String rosterString = String.join(" ", targetGroup.members);
+                                            java.util.List<String> rosterChunks = CryptoManager.chunkMessageAtSpaces(rosterString, 100);
+
+                                            for (String chunk : rosterChunks) {
+                                                String encryptedRosterChunk = CryptoManager.encryptMessage(chunk, sharedSecret);
+                                                MessageQueueManager.enqueueMessage("!oc_groster " + targetPlayer + " " + targetGroup.uuid + " " + encryptedRosterChunk);
+                                            }
+
+                                            MessageQueueManager.enqueueMessage("!oc_gadd " + targetGroup.uuid + " " + targetPlayer);
+
+                                            targetGroup.members.add(targetPlayer);
+                                            GroupManager.saveGroups();
+
+                                            context.getSource().sendFeedback(Text.literal("§" + format_code_success + "[Opaque Chat] Invited " + targetPlayer + " to '" + groupName + "'."));
+                                        } catch (Exception e) {
+                                            context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Failed to encrypt group invite!"));
+                                        }
+
+                                        return 1;
+                                    })))
+
+                                    // /oc group <group name> accept
+                                    .then(ClientCommandManager.literal("accept").executes(context -> {
+                                        String groupName = StringArgumentType.getString(context, "name");
+                                        nebuli.opaque_chat.data.GroupData pendingGroup = RequestManager.pendingGroupInvites.get(groupName.toLowerCase());
+                                        if (pendingGroup != null) {
+                                            GroupManager.addGroup(pendingGroup);
+                                            RequestManager.pendingGroupInvites.remove(groupName.toLowerCase());
+                                            RequestManager.removeRequest("#" + groupName);
+                                            context.getSource().sendFeedback(Text.literal("§" + format_code_success + "[Opaque Chat] You securely joined '#" + groupName + "'."));
+                                        } else {
+                                            context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] No pending invite found for '#" + groupName + "'."));
+                                        }
+                                        return 1;
+                                    }))
+
+                                    // /oc group <group name> reject
+                                    .then(ClientCommandManager.literal("reject").executes(context -> {
+                                        String groupName = StringArgumentType.getString(context, "name");
+                                        if (RequestManager.pendingGroupInvites.remove(groupName.toLowerCase()) != null) {
+                                            RequestManager.removeRequest("#" + groupName);
+                                            context.getSource().sendFeedback(Text.literal("§" + format_code_modname + "[Opaque Chat] Rejected invite for '#" + groupName + "'."));
+                                        }
+                                        return 1;
+                                    }))
+
+                                    // /oc group <group name> leave
+                                    .then(ClientCommandManager.literal("leave").executes(context -> {
+                                        String groupName = StringArgumentType.getString(context, "name");
+                                        nebuli.opaque_chat.data.GroupData targetGroup = GroupManager.groups.values().stream()
+                                                .filter(g -> g.name.equals(groupName)).findFirst().orElse(null);
+
+                                        if (targetGroup == null) {
+                                            context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Group not found."));
+                                            return 0;
+                                        }
+
+                                        GroupManager.removeGroup(targetGroup.uuid);
+
+                                        MessageQueueManager.enqueueMessage("!oc_gleave " + targetGroup.uuid);
+
+                                        context.getSource().sendFeedback(Text.literal("§" + format_code_success + "[Opaque Chat] You have left the group '" + groupName + "'."));
+                                        return 1;
+                                    })))
+
+                                    .then(ClientCommandManager.literal("kick").then(ClientCommandManager.argument("player", StringArgumentType.word()).executes(context -> {
+                                        String groupName = StringArgumentType.getString(context, "name");
+                                        String targetPlayer = StringArgumentType.getString(context, "player");
+
+                                        String myName = MinecraftClient.getInstance().getSession().getUsername();
+
+                                        nebuli.opaque_chat.data.GroupData targetGroup = GroupManager.groups.values().stream().filter(g -> g.name.equals(groupName)).findFirst().orElse(null);
+
+                                        if (targetGroup == null) {
+                                            context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Group not found."));
+                                            return 0;
+                                        }
+
+                                        if (!targetGroup.owner.equalsIgnoreCase(myName)) {
+                                            context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Only the group owner (" + targetGroup.owner + ") can kick members."));
+                                            return 0;
+                                        }
+
+                                        String exactMemberName = targetGroup.members.stream().filter(m -> m.equalsIgnoreCase(targetPlayer)).findFirst().orElse(null);
+
+                                        if (exactMemberName == null) {
+                                            context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Player is not in this group."));
+                                            return 0;
+                                        }
+
+                                        try {
+                                            targetGroup.members.remove(exactMemberName);
+
+                                            byte[] rawAesKey = new byte[16];
+                                            new java.security.SecureRandom().nextBytes(rawAesKey);
+                                            String newBase64Key = java.util.Base64.getEncoder().encodeToString(rawAesKey);
+
+                                            targetGroup.aes_key_base64 = newBase64Key;
+                                            targetGroup.version++;
+                                            GroupManager.saveGroups();
+
+                                            String myPrivateKey = IdentityManager.currentIdentity.private_key;
+
+                                            for (String member : targetGroup.members) {
+                                                if (member.equalsIgnoreCase(myName)) continue;
+
+                                                ContactData contact = ContactManager.contacts.get(member.toLowerCase());
+                                                if (contact != null) {
+                                                    byte[] sharedSecret = CryptoManager.getSharedSecret(myPrivateKey, contact.public_key);
+                                                    String encryptedNewKey = CryptoManager.encryptMessage(newBase64Key, sharedSecret);
+
+                                                    MessageQueueManager.enqueueMessage("!oc_gupd " + member + " " + targetGroup.uuid + " " + targetGroup.version + " " + encryptedNewKey);
+                                                }
+                                            }
+
+                                            MessageQueueManager.enqueueMessage("!oc_gkicked " + exactMemberName + " " + targetGroup.uuid);
+
+                                            context.getSource().sendFeedback(Text.literal("§" + format_code_success + "[Opaque Chat] Kicked " + exactMemberName + " and rotated AES keys for '" + groupName + "'."));
+                                        } catch (Exception e) {
+                                            context.getSource().sendFeedback(Text.literal("§" + format_code_error + "[Opaque Chat] Failed to rotate group keys!"));
+                                        }
+
+                                        return 1;
+                                    })))
+                    )
             );
         });
     }

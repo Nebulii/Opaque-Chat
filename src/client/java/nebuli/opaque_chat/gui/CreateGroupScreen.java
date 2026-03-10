@@ -161,9 +161,17 @@ public class CreateGroupScreen extends Screen {
                 if (targetContact == null) continue;
 
                 byte[] sharedSecret = CryptoManager.getSharedSecret(myPrivateKey, targetContact.public_key);
-                String encryptedGroupKey = CryptoManager.encryptMessage(newGroup.aes_key_base64, sharedSecret);
 
+                String encryptedGroupKey = CryptoManager.encryptMessage(newGroup.aes_key_base64, sharedSecret);
                 MessageQueueManager.enqueueMessage("!oc_ginv " + member + " " + newGroup.uuid + " " + newGroup.version + " " + newGroup.owner + " " + encryptedGroupKey + " " + groupName);
+
+                String rosterString = String.join(" ", newGroup.members);
+                java.util.List<String> rosterChunks = CryptoManager.chunkMessageAtSpaces(rosterString, 100);
+
+                for (String chunk : rosterChunks) {
+                    String encryptedRosterChunk = CryptoManager.encryptMessage(chunk, sharedSecret);
+                    MessageQueueManager.enqueueMessage("!oc_groster " + member + " " + newGroup.uuid + " " + encryptedRosterChunk);
+                }
             }
 
             this.client.player.sendMessage(Text.literal("§" + format_code_success + "[Opaque Chat] Group '" + groupName + "' created! Invites queued."), false);
@@ -173,6 +181,10 @@ public class CreateGroupScreen extends Screen {
         }
 
         this.close();
+    }
+
+    @Override
+    public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
     }
 
     @Override

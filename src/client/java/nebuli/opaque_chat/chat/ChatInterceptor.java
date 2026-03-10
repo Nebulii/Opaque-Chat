@@ -30,6 +30,10 @@ public class ChatInterceptor {
                     return false;
                 }
 
+                if (ConfigManager.ModConfig.blocked_players.contains(senderName.toLowerCase())) {
+                    return false;
+                }
+
                 String payload = rawText.substring(ocIndex);
                 String[] parts = payload.split(" ", 3);
                 if (parts.length >= 2) {
@@ -44,7 +48,7 @@ public class ChatInterceptor {
 
                         RequestManager.addRequest(senderName);
 
-                        MutableText notification = Text.literal("§" + format_code_modname + "[Opaque Chat] §" + format_code_highlight + senderName + "§r wants to chat securely. ").append(Text.literal("§" + format_code_info + "[ACCEPT]").styled(style -> style.withClickEvent(new ClickEvent.RunCommand("/oc accept " + senderName)).withHoverEvent(new HoverEvent.ShowText(Text.literal("Click to accept secure chat")))));
+                        MutableText notification = Text.literal("§" + format_code_modname + "[Opaque Chat] §" + format_code_highlight + senderName + "§r wants to chat securely. ").append(Text.literal("§" + format_code_success + "[ACCEPT] ").styled(style -> style.withClickEvent(new ClickEvent.RunCommand("/oc accept " + senderName)).withHoverEvent(new HoverEvent.ShowText(Text.literal("Click to accept"))))).append(Text.literal("§" + format_code_error + "[REJECT]").styled(style -> style.withClickEvent(new ClickEvent.RunCommand("/oc reject " + senderName)).withHoverEvent(new HoverEvent.ShowText(Text.literal("Click to reject")))));
 
                         MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(notification);
                     } else // !oc_gmsg <GroupUUID> <KeyVersion> <EncryptedText>
@@ -119,7 +123,7 @@ public class ChatInterceptor {
                                         RequestManager.pendingGroupInvites.put(groupName.toLowerCase(), newGroup);
                                         RequestManager.addRequest("#" + groupName);
 
-                                        MutableText notification = Text.literal("§" + format_code_modname + "[Opaque Chat] §" + format_code_highlight + senderName + "§r invited you to group §" + format_code_highlight + groupName + "§r. ").append(Text.literal("§" + format_code_info + "[ACCEPT]").styled(style -> style.withClickEvent(new ClickEvent.RunCommand("/oc group accept " + groupName)).withHoverEvent(new HoverEvent.ShowText(Text.literal("Click to join group")))));
+                                        MutableText notification = Text.literal("§" + format_code_modname + "[Opaque Chat] §" + format_code_highlight + senderName + "§r invited you to group §" + format_code_highlight + "#" + groupName + "§r. ").append(Text.literal("§" + format_code_success + "[ACCEPT] ").styled(style -> style.withClickEvent(new ClickEvent.RunCommand("/oc group " + groupName + " accept")).withHoverEvent(new HoverEvent.ShowText(Text.literal("Click to join group"))))).append(Text.literal("§" + format_code_error + "[REJECT]").styled(style -> style.withClickEvent(new ClickEvent.RunCommand("/oc group " + groupName + " reject")).withHoverEvent(new HoverEvent.ShowText(Text.literal("Click to reject")))));
 
                                         MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(notification);
                                     }
@@ -167,7 +171,7 @@ public class ChatInterceptor {
                                 boolean alreadyConnected = ContactManager.contacts != null && ContactManager.contacts.containsKey(senderName.toLowerCase());
 
                                 if (!alreadyConnected && !RequestManager.outgoingRequests.contains(senderName.toLowerCase())) {
-                                    OpaqueChatClient.LOGGER.warn("[Opaque Chat] Blocked an unsolicited public key from " + senderName);
+                                    OpaqueChatClient.LOGGER.warn("[Opaque Chat] Blocked an unsolicited public key from {}", senderName);
                                     return false;
                                 }
 
@@ -266,18 +270,14 @@ public class ChatInterceptor {
                                 if (kickedPlayer.equalsIgnoreCase(myName)) {
                                     GroupManager.removeGroup(groupUuid);
 
-                                    MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(
-                                            Text.literal("§" + format_code_error + "[Opaque Chat] You were kicked from group '" + group.name + "' by " + senderName)
-                                    );
+                                    MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.literal("§" + format_code_error + "[Opaque Chat] You were kicked from group '" + group.name + "' by " + senderName));
                                 } else {
                                     String exactMember = group.members.stream().filter(m -> m.equalsIgnoreCase(kickedPlayer)).findFirst().orElse(null);
                                     if (exactMember != null) {
                                         group.members.remove(exactMember);
                                         GroupManager.saveGroups();
 
-                                        MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(
-                                                Text.literal("§" + format_code_error + "[Opaque Chat] " + exactMember + " was kicked from '" + group.name + "'.")
-                                        );
+                                        MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.literal("§" + format_code_error + "[Opaque Chat] " + exactMember + " was kicked from '" + group.name + "'."));
                                     }
                                 }
                             }
@@ -315,8 +315,46 @@ public class ChatInterceptor {
                                             MessageQueueManager.enqueueMessage("!oc_gupd " + senderName + " " + group.uuid + " " + group.version + " " + encryptedNewKey);
                                         }
                                     } catch (Exception e) {
-                                        OpaqueChatClient.LOGGER.error("[Opaque Chat] Failed to sync key to " + senderName, e);
+                                        OpaqueChatClient.LOGGER.error("[Opaque Chat] Failed to sync key to {}", senderName, e);
                                     }
+                                }
+                            }
+                        } else if (command.equals("!oc_groster") && parts.length == 3) {
+                            String targetPlayer = parts[1];
+                            if (!targetPlayer.equalsIgnoreCase(myName)) return false;
+
+                            String[] rosterData = parts[2].split(" ", 2);
+                            if (rosterData.length == 2) {
+                                String groupUuid = rosterData[0];
+                                String encryptedChunk = rosterData[1].trim();
+
+                                try {
+                                    ContactData senderContact = ContactManager.contacts.get(senderName.toLowerCase());
+                                    if (senderContact != null && IdentityManager.currentIdentity != null) {
+
+                                        GroupData targetGroup = GroupManager.groups.get(groupUuid);
+                                        if (targetGroup == null) {
+                                            targetGroup = RequestManager.pendingGroupInvites.values().stream().filter(g -> g.uuid.equals(groupUuid)).findFirst().orElse(null);
+                                        }
+
+                                        if (targetGroup != null) {
+                                            byte[] sharedSecret = CryptoManager.getSharedSecret(IdentityManager.currentIdentity.private_key, senderContact.public_key);
+                                            String decryptedRosterChunk = CryptoManager.decryptMessage(encryptedChunk, sharedSecret);
+
+                                            String[] newMembers = decryptedRosterChunk.split(" ");
+                                            for (String m : newMembers) {
+                                                if (!m.isBlank() && !targetGroup.members.contains(m)) {
+                                                    targetGroup.members.add(m);
+                                                }
+                                            }
+
+                                            if (GroupManager.groups.containsKey(groupUuid)) {
+                                                GroupManager.saveGroups();
+                                            }
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    OpaqueChatClient.LOGGER.error("[Opaque Chat] Failed to decrypt roster chunk", e);
                                 }
                             }
                         }
